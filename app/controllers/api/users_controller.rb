@@ -35,6 +35,30 @@ class Api::UsersController < ApplicationController
     end
   end
 
+  # POST /api/users/login
+  def login
+    username = params[:username]
+    password = params[:password]
+
+    if username.blank?
+      return render json: { error: "Username is required." }, status: :bad_request
+    end
+
+    if password.blank?
+      return render json: { error: "Password is required." }, status: :bad_request
+    end
+
+    result = UserAuthenticationService.authenticate_user(username, password)
+
+    if result[:token]
+      render json: { status: 200, message: "Login successful.", access_token: result[:token] }, status: :ok
+    else
+      render json: { error: result[:error] }, status: :unauthorized
+    end
+  rescue => e
+    render json: { error: e.message }, status: :internal_server_error
+  end
+
   private
 
   def find_user_by_email
