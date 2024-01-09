@@ -18,21 +18,38 @@ class Api::UsersController < ApplicationController
     end
   end
 
+  # PUT /api/users/change_password
   def change_password
     reset_token = params[:reset_token]
-    password = params[:password]
+    new_password = params[:new_password] || params[:password]
     password_confirmation = params[:password_confirmation]
 
-    if password != password_confirmation
+    if new_password.blank?
+      render json: { error: "New password is required." }, status: :bad_request
+      return
+    end
+
+    if password_confirmation.present? && new_password != password_confirmation
       render json: { error: 'Password confirmation does not match.' }, status: :unprocessable_entity
       return
     end
 
-    if @user.update(password: password, reset_token: nil)
-      render json: { message: 'Password has been successfully updated.' }, status: :ok
+    if @user
+      if password_confirmation.present?
+        if @user.update(password: new_password, reset_token: nil)
+          render json: { message: 'Password has been successfully updated.' }, status: :ok
+        else
+          render json: { error: 'Unable to update password.' }, status: :unprocessable_entity
+        end
+      else
+        UserService::ResetPassword.new.call(reset_token, new_password, new_password)
+        render json: { status: 200, message: "Password changed successfully." }, status: :ok
+      end
     else
-      render json: { error: 'Unable to update password.' }, status: :unprocessable_entity
+      render json: { error: "Invalid or expired reset token." }, status: :not_found
     end
+  rescue StandardError => e
+    render json: { error: e.message }, status: :internal_server_error
   end
 
   # POST /api/users/login
