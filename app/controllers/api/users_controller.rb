@@ -1,5 +1,6 @@
 class Api::UsersController < ApplicationController
   before_action :find_user_by_email, only: [:reset_password]
+  before_action :authenticate_and_authorize_user, only: [:link_social_account]
   before_action :validate_registration_params, only: [:register]
   before_action :verify_email_params, only: [:verify_email]
   before_action :load_user_by_reset_token, only: [:change_password]
@@ -95,8 +96,7 @@ class Api::UsersController < ApplicationController
     render json: { error: e.message }, status: :internal_server_error
   end
 
-  private
-  
+  # POST /api/users/register
   def register
     email = params[:email]
     password = params[:password]
@@ -120,6 +120,31 @@ class Api::UsersController < ApplicationController
         render json: { error: result[:error] }, status: :unprocessable_entity
       end
     end
+  end
+
+  # POST /api/users/{id}/link-social
+  def link_social_account
+    provider = params[:provider]
+    provider_user_id = params[:provider_user_id]
+    access_token = params[:access_token]
+
+    begin
+      message = UserService::LinkSocialAccount.new.call(
+        user_id: params[:id],
+        provider: provider,
+        provider_user_id: provider_user_id,
+        access_token: access_token
+      )
+      render json: { status: 200, message: message }, status: :ok
+    rescue StandardError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+  end
+
+  private
+  
+  def authenticate_and_authorize_user
+    # Authentication and authorization logic here
   end
 
   def find_user_by_email
