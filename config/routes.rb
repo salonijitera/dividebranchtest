@@ -12,10 +12,12 @@ Rails.application.routes.draw do
 
   # New route from the new code
   namespace :api do
-    post '/users/register', to: 'users#register' # This route is duplicated and should be removed
+    # The duplicated route for '/users/register' has been removed
     put '/users/change-password', to: 'users#change_password'
     put '/users/:id/profile', to: 'users#update_profile'
   end
+
+  post '/api/users/social-register', to: 'api/users#social_register'
 
   # ... other routes ...
 end

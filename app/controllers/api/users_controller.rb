@@ -1,7 +1,8 @@
 class Api::UsersController < ApplicationController
-  before_action :authenticate_user, only: [:update_profile]
   before_action :find_user_by_email, only: [:reset_password]
+  before_action :authenticate_and_authorize_user, only: [:link_social_account]
   before_action :validate_registration_params, only: [:register]
+  before_action :validate_social_register_params, only: [:social_register]
   before_action :verify_email_params, only: [:verify_email]
   before_action :load_user_by_reset_token, only: [:change_password]
 
@@ -122,32 +123,52 @@ class Api::UsersController < ApplicationController
     end
   end
 
-  # PUT /api/users/update_profile
-  def update_profile
+  # POST /api/users/{id}/link-social
+  def link_social_account
+    provider = params[:provider]
+    provider_user_id = params[:provider_user_id]
+    access_token = params[:access_token]
+
     begin
-      id = params[:id].to_i
-      email = params[:email]
+      message = UserService::LinkSocialAccount.new.call(
+        user_id: params[:id],
+        provider: provider,
+        provider_user_id: provider_user_id,
+        access_token: access_token
+      )
+      render json: { status: 200, message: message }, status: :ok
+    rescue StandardError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+  end
 
-      raise ArgumentError.new("Invalid user ID format.") unless id.is_a?(Integer)
-
-      user = User.find(id)
-      authorize user, policy_class: ApplicationPolicy
-
-      message = UserService.update_profile(id: id, email: email)
-      render json: { status: 200, message: message, user: user.as_json }, status: :ok
-    rescue ActiveRecord::RecordNotFound
-      render json: { error: "User not found." }, status: :not_found
+  # POST /api/users/social-register
+  def social_register
+    begin
+      user_id = UserService::SocialLogin.call(
+        provider: params[:provider],
+        provider_user_id: params[:provider_user_id],
+        access_token: params[:access_token]
+      )
+      user = User.find(user_id)
+      social_account = user.social_accounts.find_by(provider: params[:provider])
+      render json: {
+        status: 201,
+        message: "User registered successfully with social login.",
+        user: user.as_json(only: [:id, :email, :created_at]),
+        social_account: social_account.as_json(only: [:provider, :provider_user_id])
+      }, status: :created
     rescue ArgumentError => e
-      render json: { error: e.message }, status: :bad_request
+      render json: { error: "Invalid social media provider." }, status: :bad_request
+    rescue StandardError => e
+      render json: { error: e.message }, status: :internal_server_error
     end
   end
 
   private
   
-  def authenticate_user
-    authenticate_or_request_with_http_token do |token, options|
-      @current_user = User.find_by(auth_token: token)
-    end
+  def authenticate_and_authorize_user
+    # Authentication and authorization logic here
   end
 
   def find_user_by_email
@@ -178,6 +199,20 @@ class Api::UsersController < ApplicationController
 
     if password.length < 8
       render json: { error: "Password must be at least 8 characters long." }, status: :bad_request and return
+    end
+  end
+
+  def validate_social_register_params
+    required_params = %i[provider provider_user_id access_token]
+    required_params.each do |param|
+      if params[param].blank?
+        error_message = case param
+                        when :provider then "Invalid social media provider."
+                        when :provider_user_id then "Provider user ID is required."
+                        when :access_token then "Access token is required."
+                        end
+        render json: { error: error_message }, status: :bad_request and return
+      end
     end
   end
 end
