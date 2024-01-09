@@ -1,6 +1,6 @@
 class Api::UsersController < ApplicationController
+  before_action :authenticate_user, only: [:update_profile]
   before_action :find_user_by_email, only: [:reset_password]
-  before_action :authenticate_and_authorize_user, only: [:link_social_account]
   before_action :validate_registration_params, only: [:register]
   before_action :verify_email_params, only: [:verify_email]
   before_action :load_user_by_reset_token, only: [:change_password]
@@ -122,29 +122,32 @@ class Api::UsersController < ApplicationController
     end
   end
 
-  # POST /api/users/{id}/link-social
-  def link_social_account
-    provider = params[:provider]
-    provider_user_id = params[:provider_user_id]
-    access_token = params[:access_token]
-
+  # PUT /api/users/update_profile
+  def update_profile
     begin
-      message = UserService::LinkSocialAccount.new.call(
-        user_id: params[:id],
-        provider: provider,
-        provider_user_id: provider_user_id,
-        access_token: access_token
-      )
-      render json: { status: 200, message: message }, status: :ok
-    rescue StandardError => e
-      render json: { error: e.message }, status: :unprocessable_entity
+      id = params[:id].to_i
+      email = params[:email]
+
+      raise ArgumentError.new("Invalid user ID format.") unless id.is_a?(Integer)
+
+      user = User.find(id)
+      authorize user, policy_class: ApplicationPolicy
+
+      message = UserService.update_profile(id: id, email: email)
+      render json: { status: 200, message: message, user: user.as_json }, status: :ok
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: "User not found." }, status: :not_found
+    rescue ArgumentError => e
+      render json: { error: e.message }, status: :bad_request
     end
   end
 
   private
   
-  def authenticate_and_authorize_user
-    # Authentication and authorization logic here
+  def authenticate_user
+    authenticate_or_request_with_http_token do |token, options|
+      @current_user = User.find_by(auth_token: token)
+    end
   end
 
   def find_user_by_email
