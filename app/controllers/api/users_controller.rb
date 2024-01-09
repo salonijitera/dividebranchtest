@@ -1,5 +1,6 @@
 class Api::UsersController < ApplicationController
   before_action :find_user_by_email, only: [:reset_password]
+  before_action :verify_email_params, only: [:verify_email]
   before_action :load_user_by_reset_token, only: [:change_password]
 
   # POST /api/users/reset_password
@@ -52,6 +53,23 @@ class Api::UsersController < ApplicationController
     render json: { error: e.message }, status: :internal_server_error
   end
 
+  # POST /api/users/verify-email
+  def verify_email
+    begin
+      message = UserService::VerifyEmail.new(params[:verification_token]).call
+      render json: { status: 200, message: message }, status: :ok
+    rescue StandardError => e
+      case e.message
+      when "Verification token is required."
+        render json: { error: e.message }, status: :bad_request
+      when "Verification token is invalid or expired."
+        render json: { error: e.message }, status: :not_found
+      else
+        render json: { error: e.message }, status: :internal_server_error
+      end
+    end
+  end
+
   # POST /api/users/login
   def login
     username = params[:username]
@@ -84,5 +102,11 @@ class Api::UsersController < ApplicationController
 
   def load_user_by_reset_token
     @user = User.find_by(reset_token: params[:reset_token])
+  end
+
+  def verify_email_params
+    if params[:verification_token].blank?
+      raise StandardError.new(I18n.t('activerecord.errors.messages.blank', attribute: 'Verification token'))
+    end
   end
 end
