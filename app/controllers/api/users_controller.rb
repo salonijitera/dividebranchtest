@@ -1,5 +1,6 @@
 class Api::UsersController < ApplicationController
   before_action :find_user_by_email, only: [:reset_password]
+  before_action :load_user_by_reset_token, only: [:change_password]
 
   # POST /api/users/reset_password
   def reset_password
@@ -17,9 +18,30 @@ class Api::UsersController < ApplicationController
     end
   end
 
+  def change_password
+    reset_token = params[:reset_token]
+    password = params[:password]
+    password_confirmation = params[:password_confirmation]
+
+    if password != password_confirmation
+      render json: { error: 'Password confirmation does not match.' }, status: :unprocessable_entity
+      return
+    end
+
+    if @user.update(password: password, reset_token: nil)
+      render json: { message: 'Password has been successfully updated.' }, status: :ok
+    else
+      render json: { error: 'Unable to update password.' }, status: :unprocessable_entity
+    end
+  end
+
   private
 
   def find_user_by_email
     @user = User.find_by(email: params[:email])
+  end
+
+  def load_user_by_reset_token
+    @user = User.find_by(reset_token: params[:reset_token])
   end
 end
