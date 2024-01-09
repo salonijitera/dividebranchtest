@@ -1,5 +1,6 @@
 class Api::UsersController < ApplicationController
   before_action :find_user_by_email, only: [:reset_password]
+  before_action :validate_registration_params, only: [:register]
   before_action :verify_email_params, only: [:verify_email]
   before_action :load_user_by_reset_token, only: [:change_password]
 
@@ -95,6 +96,31 @@ class Api::UsersController < ApplicationController
   end
 
   private
+  
+  def register
+    email = params[:email]
+    password = params[:password]
+
+    begin
+      encrypted_password = Devise::Encryptor.digest(User, password)
+      result = UserRegistrationService.register_user(email: email, password_hash: encrypted_password)
+
+      if result[:user_id]
+        user = User.find(result[:user_id])
+        render json: {
+          status: 201,
+          message: "User registered successfully.",
+          user: {
+            id: user.id,
+            email: user.email,
+            created_at: user.created_at.iso8601
+          }
+        }, status: :created
+      else
+        render json: { error: result[:error] }, status: :unprocessable_entity
+      end
+    end
+  end
 
   def find_user_by_email
     @user = User.find_by(email: params[:email])
@@ -107,6 +133,23 @@ class Api::UsersController < ApplicationController
   def verify_email_params
     if params[:verification_token].blank?
       raise StandardError.new(I18n.t('activerecord.errors.messages.blank', attribute: 'Verification token'))
+    end
+  end
+
+  def validate_registration_params
+    email = params[:email]
+    password = params[:password]
+
+    if email.blank? || password.blank?
+      render json: { error: "Email and password are required." }, status: :bad_request and return
+    end
+
+    unless email =~ URI::MailTo::EMAIL_REGEXP
+      render json: { error: "Invalid email format." }, status: :bad_request and return
+    end
+
+    if password.length < 8
+      render json: { error: "Password must be at least 8 characters long." }, status: :bad_request and return
     end
   end
 end
